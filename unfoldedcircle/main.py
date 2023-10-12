@@ -59,7 +59,7 @@ def discover_devices():
         def remove_service(self, zc, type, name):
             pass
 
-    zc = zeroconf.Zeroconf()
+    zc = zeroconf.Zeroconf(interfaces=zeroconf.InterfaceChoice.Default)
     listener = DeviceListener()
     zeroconf.ServiceBrowser(zc, ZEROCONF_SERVICE_TYPE, listener)
     try:
