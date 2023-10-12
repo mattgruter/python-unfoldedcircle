@@ -2,6 +2,7 @@ import copy
 import logging
 import socket
 import time
+from urllib.parse import urlparse, urljoin
 
 import click
 import httpx
@@ -11,21 +12,34 @@ ZEROCONF_TIMEOUT = 1
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
 
 
+class DeviceList:
+    def __init__(self, devices):
+        self.devices = devices
+
+    def __iter__(self):
+        return self.devices.__iter__()
+
+    def __len__(self):
+        return len(self.devices)
+
+
 class Device:
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        p = urlparse(endpoint)
+        self.host = p.hostname
+        self.port = p.port
+        self.__info = None
 
     def url(self, path=""):
-        if self.port == "80":
-            return f"http://{self.host}/api/{path}"
-        else:
-            return f"http://{self.host}:{self.port}/api/{path}"
+        return urljoin(self.endpoint, path, allow_fragments=True)
 
     def info(self):
-        with httpx.Client() as client:
-            r = client.get(self.url("pub/version"))
-            return r.json()
+        if not self.__info:
+            with httpx.Client() as client:
+                r = client.get(self.url("pub/version"))
+                return r.json()
+        return self.__info
 
 
 def discover_devices():
@@ -36,8 +50,8 @@ def discover_devices():
         def add_service(self, zc, type, name):
             info = zc.get_service_info(type, name)
             host = socket.inet_ntoa(info.addresses[0])
-            port = info.port
-            self.devices.append(Device(host, port))
+            endpoint = f"http://{host}:{info.port}/api/"
+            self.devices.append(Device(endpoint))
 
         def update_service(self, zc, type, name):
             pass
@@ -52,7 +66,7 @@ def discover_devices():
         time.sleep(ZEROCONF_TIMEOUT)
     finally:
         zc.close()
-    return copy.deepcopy(listener.devices)
+    return DeviceList(copy.deepcopy(listener.devices))
 
 
 def print_info(device):
@@ -64,39 +78,53 @@ def print_info(device):
     click.echo(f"  core: {info['core']}")
 
 
-pass_device = click.make_pass_decorator(Device)
+pass_devices = click.make_pass_decorator(DeviceList)
 
 
 @click.group()
-@click.option("--host", envvar="UC_HOST", required=False)
-@click.option("--port", envvar="UC_PORT", required=False)
+@click.option("--endpoint", envvar="UC_ENDPOINT")
 @click.option("-d", "--debug", default=False, count=True)
+@click.option("--testing", envvar="UC_TESTING", hidden=True, is_flag=True)
 @click.pass_context
 @click.version_option(package_name="python-unfoldedcircle")
-def cli(ctx, host, port, debug):
-    lvl = logging.INFO
+def cli(ctx, endpoint, debug, testing):
+    ctx.obj = dict()
+
+    if testing:
+        click.echo("-- Testing mode --")
+        if not endpoint:
+            endpoint = "http://localhost:8080/api/"
+
+    lvl = logging.WARN
     if debug:
         lvl = logging.DEBUG
         click.echo("Setting debug level to %s" % debug)
     logging.basicConfig(level=lvl)
 
-    if ctx.invoked_subcommand == "discover":
-        return
-
-    logging.debug("Using host %s, port %s", host, port)
-    ctx.obj = Device(host, port)
-
-
-@cli.command()
-@pass_device
-def info(dev):
-    print_info(dev)
+    if not endpoint:
+        logging.debug("Auto-discoverying devices")
+        ctx.obj = discover_devices()
+    else:
+        logging.debug("Using endpoint %s", endpoint)
+        ctx.obj = DeviceList([Device(endpoint)])
 
 
-@cli.command()
-def discover():
-    for d in discover_devices():
+@cli.command(help="Print device information.")
+@pass_devices
+def info(devices):
+    for d in devices:
         print_info(d)
+
+
+@cli.command(help="Discover supported devices.")
+@pass_devices
+def discover(devices):
+    if not devices:
+        click.echo("No devices discovered.")
+    else:
+        click.echo("Discovered devices:")
+        for d in devices:
+            click.echo(f"- {d.info()['device_name']} ({d.host})")
 
 
 if __name__ == "__main__":
