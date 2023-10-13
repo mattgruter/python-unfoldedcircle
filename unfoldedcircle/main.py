@@ -1,14 +1,15 @@
 import copy
 import logging
 import socket
+import sys
 import time
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
 
 import click
 import httpx
 import zeroconf
 
-ZEROCONF_TIMEOUT = 1
+ZEROCONF_TIMEOUT = 3
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
 
 
@@ -24,22 +25,52 @@ class DeviceList:
 
 
 class Device:
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, username=None, password=None):
         self.endpoint = endpoint
         p = urlparse(endpoint)
         self.host = p.hostname
         self.port = p.port
+        self.username = username
+        self.password = password
         self.__info = None
+        self.__logged_in = False
+        self.__auth_cookie = {}
 
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
 
+    def client(self):
+        client = httpx.Client()
+        if self.__logged_in:
+            client.cookies.update(self.__auth_cookie)
+        return client
+
     def info(self):
         if not self.__info:
-            with httpx.Client() as client:
+            with self.client() as client:
                 r = client.get(self.url("pub/version"))
                 return r.json()
         return self.__info
+
+    def login(self):
+        if self.__logged_in:
+            return
+        with httpx.Client() as client:
+            body = {"username": self.username, "password": self.password}
+            r = client.post(self.url("pub/login"), json=body)
+            httpx.Response
+        if r.is_error:
+            click.echo(f"Error: {r.json()['message']}")
+            sys.exit()
+        logging.debug("Login successful")
+        self.__auth_cookie = {"id": r.cookies["id"]}
+        self.__logged_in = True
+
+    def fetch_docks(self):
+        self.login()
+        with self.client() as client:
+            r = client.get(self.url("docks"))
+        return r.json()
 
 
 def discover_devices():
@@ -69,15 +100,6 @@ def discover_devices():
     return DeviceList(copy.deepcopy(listener.devices))
 
 
-def print_info(device):
-    info = device.info()
-    click.echo(f"Remote: '{info['device_name']}'")
-    click.echo(f"  endpoint: {device.url()}")
-    click.echo(f"  version: {info['os']}")
-    click.echo(f"  api: {info['api']}")
-    click.echo(f"  core: {info['core']}")
-
-
 pass_devices = click.make_pass_decorator(DeviceList)
 
 
@@ -85,9 +107,11 @@ pass_devices = click.make_pass_decorator(DeviceList)
 @click.option("--endpoint", envvar="UC_ENDPOINT")
 @click.option("-d", "--debug", default=False, count=True)
 @click.option("--testing", envvar="UC_TESTING", hidden=True, is_flag=True)
+@click.option("--username", default="web-configurator", hidden=True)
+@click.option("--pin", prompt=True, hide_input=True, type=str)
 @click.pass_context
 @click.version_option(package_name="python-unfoldedcircle")
-def cli(ctx, endpoint, debug, testing):
+def cli(ctx, endpoint, debug, testing, username, pin):
     ctx.obj = dict()
 
     if testing:
@@ -106,14 +130,18 @@ def cli(ctx, endpoint, debug, testing):
         ctx.obj = discover_devices()
     else:
         logging.debug("Using endpoint %s", endpoint)
-        ctx.obj = DeviceList([Device(endpoint)])
+        ctx.obj = DeviceList([Device(endpoint, username, password=pin)])
 
 
 @cli.command(help="Print device information.")
 @pass_devices
 def info(devices):
     for d in devices:
-        print_info(d)
+        click.echo(f"Remote: '{d.info['device_name']}'")
+        click.echo(f"  endpoint: {d.url()}")
+        click.echo(f"  version: {d.info['os']}")
+        click.echo(f"  api: {d.info['api']}")
+        click.echo(f"  core: {d.info['core']}")
 
 
 @cli.command(help="Discover supported devices.")
@@ -124,7 +152,17 @@ def discover(devices):
     else:
         click.echo("Discovered devices:")
         for d in devices:
-            click.echo(f"- {d.info()['device_name']} ({d.host})")
+            click.echo(f"- {d.info()['device_name']} ({d.endpoint})")
+
+
+@cli.command(help="List docks connected to a remote")
+@pass_devices
+def docks(devices):
+    for d in devices:
+        docks = d.fetch_docks()
+        click.echo(f"Remote: '{d.info()['device_name']}'")
+        for dock in docks:
+            click.echo(f"- {dock['name']} ({dock['dock_id']})")
 
 
 if __name__ == "__main__":
