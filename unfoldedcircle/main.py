@@ -89,6 +89,17 @@ class Device:
             r = client.get(self.url("ir/emitters"))
         return r.json()
 
+    def send_ircode(self, emitter, codeset, command):
+        self.login()
+        with self.client() as client:
+            body = {"codeset_id": codeset, "cmd_id": command}
+            url = self.url(f"ir/emitters/{emitter}/send")
+            r = client.put(url=url, json=body)
+            if r.is_error:
+                code = r.status_code
+                err = r.json()
+                click.echo(f"Error: {code} {err['code']}: {err['message']}")
+
 
 def discover_devices():
     class DeviceListener:
@@ -251,6 +262,27 @@ def iremitters(devices):
             for field, k in fields.items():
                 click.echo(f"    {field : <8}{e[k]}")
             click.echo()
+
+
+@cli.command()
+@click.argument("emitter")
+@click.argument("code")
+@pass_devices
+def irsend(devices, emitter, code):
+    """Send IR code CODE on emitter EMITTER.
+
+    EMITTER is the ID of the IR emitter to send the code from.
+
+    CODE is the name of the IR code to send in the format of CODESET:COMMAND.
+
+    Example: irsend UC-Dock-2Y1B14AZ891B hrfnqMmR:VOLUME_DOWN
+    """
+    if len(devices) > 1:
+        click.echo("Multiple devices detected, specify one device endpoint.")
+        sys.exit()
+    device = devices[0]
+    codeset, command = code.split(":")
+    device.send_ircode(emitter, codeset, command)
 
 
 if __name__ == "__main__":
