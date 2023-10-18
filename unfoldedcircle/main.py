@@ -160,9 +160,21 @@ def discover(devices):
 def docks(devices):
     for d in devices:
         docks = d.fetch_docks()
-        click.echo(f"Remote: '{d.info()['device_name']}'")
+        if not docks:
+            click.echo("No docks found")
+            return
+        click.echo(f"Docks connected to '{d.info()['device_name']}'")
+        fields = {
+            "id": "dock_id",
+            "model": "model",
+            "url": "resolved_ws_url",
+            "active": "active",
+        }
         for dock in docks:
-            click.echo(f"- {dock['name']} ({dock['dock_id']})")
+            click.echo(f"- name: '{dock['name']}'")
+            for field, k in fields.items():
+                click.echo(f"    {field : <8}{dock[k]}")
+            click.echo()
 
 
 if __name__ == "__main__":
