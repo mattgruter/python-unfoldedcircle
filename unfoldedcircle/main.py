@@ -72,6 +72,12 @@ class Device:
             r = client.get(self.url("docks"))
         return r.json()
 
+    def fetch_activities(self):
+        self.login()
+        with self.client() as client:
+            r = client.get(self.url("activities"))
+        return r.json()
+
 
 def discover_devices():
     class DeviceListener:
@@ -174,6 +180,26 @@ def docks(devices):
             click.echo(f"- name: '{dock['name']}'")
             for field, k in fields.items():
                 click.echo(f"    {field : <8}{dock[k]}")
+            click.echo()
+
+
+@cli.command(help="List activities")
+@pass_devices
+def activities(devices):
+    for d in devices:
+        activities = d.fetch_activities()
+        if not activities:
+            click.echo("No activities found")
+            return
+        click.echo(f"Activities configured on '{d.info()['device_name']}'")
+        fields = {
+            "id": "entity_id",
+            "enabled": "enabled",
+        }
+        for a in activities:
+            click.echo(f"- name: '{a['name']['en']}'")
+            for field, k in fields.items():
+                click.echo(f"    {field : <8}{a[k]}")
             click.echo()
 
 
