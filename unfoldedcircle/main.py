@@ -108,7 +108,7 @@ pass_devices = click.make_pass_decorator(DeviceList)
 @click.option("-d", "--debug", default=False, count=True)
 @click.option("--testing", envvar="UC_TESTING", hidden=True, is_flag=True)
 @click.option("--username", default="web-configurator", hidden=True)
-@click.option("--pin", prompt=True, hide_input=True, type=str)
+@click.option("--pin", default="1234", type=str)
 @click.pass_context
 @click.version_option(package_name="python-unfoldedcircle")
 def cli(ctx, endpoint, debug, testing, username, pin):
