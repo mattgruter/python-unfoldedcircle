@@ -13,15 +13,9 @@ ZEROCONF_TIMEOUT = 3
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
 
 
-class DeviceList:
-    def __init__(self, devices):
-        self.devices = devices
-
-    def __iter__(self):
-        return self.devices.__iter__()
-
-    def __len__(self):
-        return len(self.devices)
+class DeviceList(list):
+    def __init__(self, *args, **kwargs):
+        super(DeviceList, self).__init__(args[0])
 
 
 class Device:
