@@ -137,11 +137,11 @@ def cli(ctx, endpoint, debug, testing, username, pin):
 @pass_devices
 def info(devices):
     for d in devices:
-        click.echo(f"Remote: '{d.info['device_name']}'")
+        click.echo(f"Remote: '{d.info()['device_name']}'")
         click.echo(f"  endpoint: {d.url()}")
-        click.echo(f"  version: {d.info['os']}")
-        click.echo(f"  api: {d.info['api']}")
-        click.echo(f"  core: {d.info['core']}")
+        click.echo(f"  version: {d.info()['os']}")
+        click.echo(f"  api: {d.info()['api']}")
+        click.echo(f"  core: {d.info()['core']}")
 
 
 @cli.command(help="Discover supported devices.")
