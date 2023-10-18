@@ -78,6 +78,24 @@ class Device:
             r = client.get(self.url("activities"))
         return r.json()
 
+    def fetch_remotes(self):
+        self.login()
+        with self.client() as client:
+            r = client.get(self.url("remotes"))
+            self.remotes = r.json()
+            for remote in self.remotes:
+                r = client.get(self.url(f"remotes/{remote['entity_id']}/ir"))
+                if r:
+                    remote["codeset"] = r.json()
+
+        return self.remotes
+
+    def fetch_emitters(self):
+        self.login()
+        with self.client() as client:
+            r = client.get(self.url("ir/emitters"))
+        return r.json()
+
 
 def discover_devices():
     class DeviceListener:
@@ -200,6 +218,44 @@ def activities(devices):
             click.echo(f"- name: '{a['name']['en']}'")
             for field, k in fields.items():
                 click.echo(f"    {field : <8}{a[k]}")
+            click.echo()
+
+
+@cli.command(help="List IR codesets")
+@pass_devices
+def ircodes(devices):
+    for d in devices:
+        remotes = d.fetch_remotes()
+        if not remotes:
+            click.echo("No IR codesets found")
+            return
+        click.echo(f"IR codesets configured on '{d.info()['device_name']}")
+        for r in remotes:
+            click.echo(f"- name: '{r['name']['en']}'")
+            click.echo(f"    id      {r['entity_id']}")
+            click.echo(f"    codeset {r['codeset']['id']}")
+            for code in r["codeset"]["codes"]:
+                click.echo(f"      - {code['cmd_id']}")
+
+
+@cli.command(help="List IR emitters")
+@pass_devices
+def iremitters(devices):
+    for d in devices:
+        emitters = d.fetch_emitters()
+        if not emitters:
+            click.echo("No IR emitters found")
+            return
+        click.echo(f"IR emitters available on '{d.info()['device_name']}")
+        fields = {
+            "id": "device_id",
+            "type": "type",
+            "active": "active",
+        }
+        for e in emitters:
+            click.echo(f"- name: '{e['name']}'")
+            for field, k in fields.items():
+                click.echo(f"    {field : <8}{e[k]}")
             click.echo()
 
 
