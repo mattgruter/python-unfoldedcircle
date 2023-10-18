@@ -52,7 +52,6 @@ class Device:
         with httpx.Client() as client:
             body = {"username": self.username, "password": self.password}
             r = client.post(self.url("pub/login"), json=body)
-            httpx.Response
         if r.is_error:
             click.echo(f"Error: {r.json()['message']}")
             sys.exit()
@@ -167,6 +166,7 @@ def info(devices):
 def discover(devices):
     if not devices:
         click.echo("No devices discovered.")
+        sys.exit(-1)
     else:
         click.echo("Discovered devices:")
         for d in devices:
