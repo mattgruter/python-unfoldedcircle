@@ -15,6 +15,8 @@ from device import (
     CommandNotFound,
 )
 
+VERSION = "0.0.1"
+
 pass_devices = click.make_pass_decorator(DeviceGroup)
 
 
@@ -39,7 +41,7 @@ def main():
 @click.option("--username", default="web-configurator", hidden=True)
 @click.option("--pin", default="1234", type=str)
 @click.pass_context
-@click.version_option(package_name="python-unfoldedcircle")
+@click.version_option(version=VERSION, prog_name="unfoldedcircle")
 def cli(ctx, endpoint, debug, testing, username, pin):
     ctx.obj = dict()
 
