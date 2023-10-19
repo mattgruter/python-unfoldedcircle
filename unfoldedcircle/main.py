@@ -13,9 +13,106 @@ ZEROCONF_TIMEOUT = 3
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
 
 
-class DeviceList(list):
+class NoDefaultEmitterError(Exception):
+    "Raised when default IR emitter can't be inferred."
+    pass
+
+
+class EmitterNotFoundError(Exception):
+    """Raised when IR emitter with a given name can't be found.
+
+    Attributes:
+        name -- name of emitter that wasn't found
+        message -- explanation of the error
+    """
+
+    def __init__(self, name, message="Emitter not found on device"):
+        self.name = name
+        self.message = message
+        super().__init__(self.message)
+
+
+class IRCodesetNotFound(Exception):
+    """Raised when IR codeset with a given name can't be found.
+
+    Attributes:
+        name -- IR target name that wasn't found
+        message -- explanation of the error
+    """
+
+    def __init__(self, name, message="IR target name not found in codesets"):
+        self.name = name
+        self.message = message
+        super().__init__(self.message)
+
+
+class DeviceGroup(list):
     def __init__(self, *args, **kwargs):
-        super(DeviceList, self).__init__(args[0])
+        super(DeviceGroup, self).__init__(args[0])
+
+    def send_ircmd(self, target, cmd, emitter_name=None):
+        dev, emitter = self.find_emitter(emitter_name)
+        dev2, codeset = self.find_codeset(target)
+        assert dev == dev2
+        logging.debug(
+            "Sending '%s' to '%s' via emitter '%s' on device '%s'",
+            cmd,
+            target,
+            emitter["name"],
+            dev.name,
+        )
+        dev.send_ircode(emitter["device_id"], codeset, cmd)
+
+    def find_emitter(self, emitter_name):
+        if len(self) > 1 and not emitter_name:
+            logging.info(
+                "Unable to infer default emitter with more than 1 device."
+            )
+            raise NoDefaultEmitterError()
+        for d in self:
+            emitters = d.fetch_emitters()
+            if not emitter_name:
+                if len(emitters) == 1:
+                    e = emitters[0]
+                    logging.debug(
+                        "Selecting default IR emitter '%s'", e["name"]
+                    )
+                    return d, e
+                elif len(emitters) > 1:
+                    raise NoDefaultEmitterError()
+
+            for e in emitters:
+                if emitter_name == e["name"]:
+                    logging.debug(
+                        "Found IR emitter '%s' connected to device '%s'",
+                        emitter_name,
+                        d.name,
+                    )
+                    return d, e
+            logging.debug(
+                "IR emitter '%s' not found in device '%s'",
+                emitter_name,
+                d.name,
+            )
+        else:
+            msg = f"IR emitter '{emitter_name}' not found."
+            raise EmitterNotFoundError(emitter_name, message=msg)
+
+    def find_codeset(self, target):
+        logging.debug("Searching for IR target '%s'", target)
+        for d in self:
+            remotes = d.fetch_remotes()
+            for r in remotes:
+                if target in r["name"].values():
+                    logging.debug(
+                        "Found IR target '%s' on device '%s'",
+                        target,
+                        d.info()["device_name"],
+                    )
+                    return d, r["codeset"]["id"]
+        else:
+            msg = f"IR target '{target}' not found."
+            raise IRCodesetNotFound(target, message=msg)
 
 
 class Device:
@@ -29,6 +126,10 @@ class Device:
         self.__info = None
         self.__logged_in = False
         self.__auth_cookie = {}
+
+    @property
+    def name(self):
+        return self.info()["device_name"]
 
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
@@ -125,10 +226,10 @@ def discover_devices():
         time.sleep(ZEROCONF_TIMEOUT)
     finally:
         zc.close()
-    return DeviceList(copy.deepcopy(listener.devices))
+    return DeviceGroup(copy.deepcopy(listener.devices))
 
 
-pass_devices = click.make_pass_decorator(DeviceList)
+pass_devices = click.make_pass_decorator(DeviceGroup)
 
 
 @click.group()
@@ -158,12 +259,14 @@ def cli(ctx, endpoint, debug, testing, username, pin):
         ctx.obj = discover_devices()
     else:
         logging.debug("Using endpoint %s", endpoint)
-        ctx.obj = DeviceList([Device(endpoint, username, password=pin)])
+        ctx.obj = DeviceGroup([Device(endpoint, username, password=pin)])
 
 
-@cli.command(help="Print device information.")
+@cli.command()
 @pass_devices
 def info(devices):
+    """Print device information."""
+
     for d in devices:
         click.echo(f"Remote: '{d.info()['device_name']}'")
         click.echo(f"  endpoint: {d.url()}")
@@ -172,9 +275,11 @@ def info(devices):
         click.echo(f"  core: {d.info()['core']}")
 
 
-@cli.command(help="Discover supported devices.")
+@cli.command()
 @pass_devices
 def discover(devices):
+    """Discover supported devices."""
+
     if not devices:
         click.echo("No devices discovered.")
         sys.exit(-1)
@@ -184,9 +289,11 @@ def discover(devices):
             click.echo(f"- {d.info()['device_name']} ({d.endpoint})")
 
 
-@cli.command(help="List docks connected to a remote")
+@cli.command()
 @pass_devices
 def docks(devices):
+    """List docks connected to a remote."""
+
     for d in devices:
         docks = d.fetch_docks()
         if not docks:
@@ -206,9 +313,11 @@ def docks(devices):
             click.echo()
 
 
-@cli.command(help="List activities")
+@cli.command()
 @pass_devices
 def activities(devices):
+    """List activities."""
+
     for d in devices:
         activities = d.fetch_activities()
         if not activities:
@@ -226,9 +335,11 @@ def activities(devices):
             click.echo()
 
 
-@cli.command(help="List IR codesets")
+@cli.command()
 @pass_devices
 def ircodes(devices):
+    """List IR codesets."""
+
     for d in devices:
         remotes = d.fetch_remotes()
         if not remotes:
@@ -243,9 +354,11 @@ def ircodes(devices):
                 click.echo(f"      - {code['cmd_id']}")
 
 
-@cli.command(help="List IR emitters")
+@cli.command()
 @pass_devices
 def iremitters(devices):
+    """List IR emitters."""
+
     for d in devices:
         emitters = d.fetch_emitters()
         if not emitters:
@@ -265,24 +378,35 @@ def iremitters(devices):
 
 
 @cli.command()
-@click.argument("emitter")
-@click.argument("code")
+@click.option(
+    "--emitter",
+    envvar="UC_EMITTER",
+    help="The IR emitter to send the code from",
+)
+@click.argument("target")
+@click.argument("command")
 @pass_devices
-def irsend(devices, emitter, code):
-    """Send IR code CODE on emitter EMITTER.
+def irsend(devices, emitter, target, command):
+    """Send IR COMMAND to TARGET.
 
-    EMITTER is the ID of the IR emitter to send the code from.
+    TARGET is the name of the device to send the IR code to (e.g. "LG TV")
 
-    CODE is the name of the IR code to send in the format of CODESET:COMMAND.
+    COMMAND is the name of the IR command (e.g. "VOLUME_UP")
 
-    Example: irsend UC-Dock-2Y1B14AZ891B hrfnqMmR:VOLUME_DOWN
+    Example: irsend "LG TV" VOLUME_DUP
     """
-    if len(devices) > 1:
-        click.echo("Multiple devices detected, specify one device endpoint.")
-        sys.exit()
-    device = devices[0]
-    codeset, command = code.split(":")
-    device.send_ircode(emitter, codeset, command)
+
+    try:
+        devices.send_ircmd(target, command, emitter)
+    except NoDefaultEmitterError:
+        click.echo("No default emitter found. Use --emitter flag to set one.")
+        sys.exit(-1)
+    except EmitterNotFoundError as e:
+        click.echo(e.message)
+        sys.exit(-1)
+    except IRCodesetNotFound as e:
+        click.echo(e.message)
+        sys.exit(-1)
 
 
 if __name__ == "__main__":
