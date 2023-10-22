@@ -3,8 +3,13 @@ name = "python-unfoldedcircle"
 version = "0.0.1"
 description = "Python library to interact with Unfolde Circle Remote Two"
 authors = ["Matthias Grüter <matthias@grueter.name>"]
+license = "Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/mattgruter/python-unfoldedcircle"
 packages = [{include = "unfoldedcircle"}]
+
+[tool.poetry.scripts]
+unfoldedcircle = "unfoldedcircle.cli:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"

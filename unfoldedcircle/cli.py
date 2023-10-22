@@ -3,7 +3,7 @@ import sys
 
 import click
 
-from device import (
+from unfoldedcircle.device import (
     Device,
     DeviceGroup,
     discover_devices,
@@ -41,7 +41,10 @@ def main():
 @click.option("--username", default="web-configurator", hidden=True)
 @click.option("--pin", default="1234", type=str)
 @click.pass_context
-@click.version_option(version=VERSION, prog_name="unfoldedcircle")
+@click.version_option(
+    package_name="python-unfoldedcircle",
+    prog_name="unfoldedcircle",
+)
 def cli(ctx, endpoint, debug, testing, username, pin):
     ctx.obj = dict()
 
