@@ -10,6 +10,9 @@ import zeroconf
 ZEROCONF_TIMEOUT = 3
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
 
+AUTH_APIKEY_NAME = "python-unfoldedcircle"
+AUTH_USERNAME = "web-configurator"
+
 
 class HTTPError(Exception):
     """Raised when an HTTP operation fails.
@@ -23,7 +26,7 @@ class HTTPError(Exception):
         super().__init__(self.message)
 
 
-class LoginError(Exception):
+class AuthenticationError(Exception):
     """Raised when HTTP login fails.
 
     Attributes:
@@ -70,7 +73,7 @@ class CodesetNotFound(Exception):
 
 
 class CommandNotFound(Exception):
-    """Raised when IR comman with a given name can't be found.
+    """Raised when IR command with a given name can't be found.
 
     Attributes:
         name -- IR command name that wasn't found
@@ -78,6 +81,20 @@ class CommandNotFound(Exception):
     """
 
     def __init__(self, name, message="IR command not found in codesets"):
+        self.name = name
+        self.message = message
+        super().__init__(self.message)
+
+
+class ApiKeyNotFound(Exception):
+    """Raised when API Key with given name can't be found.
+
+    Attributes:
+        name -- Name of the API Key
+        message -- explanation of the error
+    """
+
+    def __init__(self, name, message="API key name not found"):
         self.name = name
         self.message = message
         super().__init__(self.message)
@@ -153,16 +170,14 @@ class DeviceGroup(list):
 
 
 class Device:
-    def __init__(self, endpoint, username=None, password=None):
+    def __init__(self, endpoint, apikey=None, pin=None):
         self.endpoint = endpoint
         p = urlparse(endpoint)
         self.host = p.hostname
         self.port = p.port
-        self.username = username
-        self.password = password
+        self.apikey = apikey
+        self.pin = pin
         self.__info = None
-        self.__logged_in = False
-        self.__auth_cookie = {}
 
     @property
     def name(self):
@@ -171,46 +186,82 @@ class Device:
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
 
+    def login(self, username, pin):
+        with httpx.Client() as client:
+            body = {"username": username, "password": pin}
+            r = client.post(self.url("pub/login"), json=body)
+        if r.is_error:
+            raise AuthenticationError(f"{r.json()['message']}")
+        logging.debug("Login successful")
+        return {"id": r.cookies["id"]}
+
     def client(self):
-        client = httpx.Client()
-        if self.__logged_in:
-            client.cookies.update(self.__auth_cookie)
+        if self.apikey:
+            logging.debug("Setting bearer token to API key.")
+            client = httpx.Client(auth=ApiKeyAuth(self.apikey))
+        else:
+            client = httpx.Client()
+            if self.pin:
+                logging.debug("Logging in with provided PIN")
+                auth_cookie = self.login(AUTH_USERNAME, self.pin)
+                client.cookies.update(auth_cookie)
         return client
 
     def info(self):
         if not self.__info:
             with self.client() as client:
                 r = client.get(self.url("pub/version"))
-                return r.json()
+                if r.is_error:
+                    msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
+                    raise HTTPError(msg)
+                self.__info = r.json()
         return self.__info
 
-    def login(self):
-        if self.__logged_in:
-            return
-        with httpx.Client() as client:
-            body = {"username": self.username, "password": self.password}
-            r = client.post(self.url("pub/login"), json=body)
+    def fetch_apikeys(self):
+        with self.client() as client:
+            r = client.get(self.url("auth/api_keys"))
         if r.is_error:
-            msg = f"{r.json()['message']}"
-            raise LoginError(msg)
-        logging.debug("Login successful")
-        self.__auth_cookie = {"id": r.cookies["id"]}
-        self.__logged_in = True
+            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
+            raise HTTPError(msg)
+        return r.json()
+
+    def add_apikey(self, key_name, scopes):
+        logging.debug(f"Creating API key '{key_name}' with scopes {scopes}")
+        body = {"name": key_name, "scopes": scopes}
+        with self.client() as client:
+            r = client.post(self.url("auth/api_keys"), json=body)
+        if r.is_error:
+            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
+            raise HTTPError(msg)
+        return r.json()
+
+    def del_apikey(self, key_name):
+        logging.debug(f"Deleting API key '{key_name}'")
+        with self.client() as client:
+            keys = self.fetch_apikeys()
+            for k in keys:
+                if k["name"] == key_name:
+                    key_id = k["key_id"]
+                    break
+            else:
+                msg = f"API Key '{key_name}' not found."
+                raise ApiKeyNotFound(key_name, message=msg)
+            r = client.delete(self.url(f"auth/api_keys/{key_id}"))
+        if r.is_error:
+            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
+            raise HTTPError(msg)
 
     def fetch_docks(self):
-        self.login()
         with self.client() as client:
             r = client.get(self.url("docks"))
         return r.json()
 
     def fetch_activities(self):
-        self.login()
         with self.client() as client:
             r = client.get(self.url("activities"))
         return r.json()
 
     def fetch_remotes(self):
-        self.login()
         with self.client() as client:
             r = client.get(self.url("remotes"))
             self.remotes = r.json()
@@ -222,13 +273,11 @@ class Device:
         return self.remotes
 
     def fetch_emitters(self):
-        self.login()
         with self.client() as client:
             r = client.get(self.url("ir/emitters"))
         return r.json()
 
     def send_ircode(self, emitter, codeset, command):
-        self.login()
         with self.client() as client:
             body = {"codeset_id": codeset, "cmd_id": command}
             url = self.url(f"ir/emitters/{emitter}/send")
@@ -240,6 +289,15 @@ class Device:
                 err = r.json()
                 msg = f"{r.status_code} {err['code']}: {err['message']}"
                 raise HTTPError(msg)
+
+
+class ApiKeyAuth(httpx.Auth):
+    def __init__(self, apikey):
+        self.apikey = apikey
+
+    def auth_flow(self, request):
+        request.headers["Authorization"] = f"Bearer {self.apikey}"
+        yield request
 
 
 def discover_devices():
