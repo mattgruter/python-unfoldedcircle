@@ -299,16 +299,18 @@ class ApiKeyAuth(httpx.Auth):
         yield request
 
 
-def discover_devices():
+def discover_devices(apikeys=dict()):
     class DeviceListener:
         def __init__(self):
+            self.apikeys = apikeys
             self.devices = []
 
         def add_service(self, zc, type, name):
             info = zc.get_service_info(type, name)
             host = socket.inet_ntoa(info.addresses[0])
             endpoint = f"http://{host}:{info.port}/api/"
-            self.devices.append(Device(endpoint))
+            apikey = apikeys.get(endpoint)
+            self.devices.append(Device(endpoint, apikey))
 
         def update_service(self, zc, type, name):
             pass

@@ -39,17 +39,33 @@ def main():
         sys.exit(-1)
 
 
+def parse_keyfile(f):
+    apikeys = dict()
+    for line in f:
+        endpoint, apikey = line.split(";")
+        apikey = apikey.strip()
+        apikeys[endpoint] = apikey
+    return apikeys
+
+
 @click.group()
 @click.option("--endpoint", envvar="UC_ENDPOINT")
+@click.option(
+    "-k",
+    "--keyfile",
+    envvar="UC_KEYFILE",
+    default="./.credentials",
+    type=click.File("r"),
+)
+@click.option("--apikey", envvar="UC_APIKEY", type=str)
 @click.option("-d", "--debug", default=False, count=True)
 @click.option("--testing", envvar="UC_TESTING", hidden=True, is_flag=True)
-@click.option("--apikey", envvar="UC_APIKEY", type=str)
 @click.version_option(
     package_name="python-unfoldedcircle",
     prog_name="unfoldedcircle",
 )
 @click.pass_context
-def cli(ctx, endpoint, debug, testing, apikey):
+def cli(ctx, endpoint, keyfile, apikey, debug, testing):
     ctx.obj = dict()
 
     if testing:
@@ -63,11 +79,17 @@ def cli(ctx, endpoint, debug, testing, apikey):
         click.echo("Setting debug level to %s" % debug)
     logging.basicConfig(level=lvl)
 
+    if apikey:
+        apikeys = {endpoint: apikey}
+    if not apikey:
+        apikeys = parse_keyfile(keyfile)
+
     if not endpoint:
         logging.debug("Auto-discoverying devices")
-        ctx.obj = discover_devices()
+        ctx.obj = discover_devices(apikeys)
     else:
         logging.debug("Using endpoint %s", endpoint)
+        apikey = apikeys.get(endpoint)
         ctx.obj = DeviceGroup([Device(endpoint, apikey)])
 
 
