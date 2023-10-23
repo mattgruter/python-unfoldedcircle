@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-unfoldedcircle"
-version = "0.0.1"
+version = "0.0.2"
 description = "Python library to interact with Unfolde Circle Remote Two"
 authors = ["Matthias Grüter <matthias@grueter.name>"]
 license = "Apache-2.0"
