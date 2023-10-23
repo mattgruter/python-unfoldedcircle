@@ -232,7 +232,7 @@ class Device:
         with self.client() as client:
             r = client.post(self.url("auth/api_keys"), json=body)
         self.raise_if_error(r)
-        return r.json()
+        return r.json()["api_key"]
 
     def del_apikey(self, key_name):
         logging.debug(f"Deleting API key '{key_name}'")

@@ -54,7 +54,7 @@ Authentication is necessary to interact with a device. The `auth login` command 
 ```sh
 $ unfoldedcricle --endpoint http://192.168.1.20:80/api/ auth login
 PIN: ***
-Use this API key for 'Remote Two Bob': PhyrUcD.YzNkOTg5MTA5ZTFkNDMxMGIxODVkMTJiYmU3ODllMjcuMmFjZDk0YmU5N2RjNDM4ZWFhYzU3ZTY1MjQzY2EyNTk
+New API key for 'Remote Two Bob': PhyrUcD.YzNkOTg5MTA5ZTFkNDMxMGIxODVkMTJiYmU3ODllMjcuMmFjZDk0YmU5N2RjNDM4ZWFhYzU3ZTY1MjQzY2EyNTk
 ```
 
-Set the API key returned by the `login` command with the `--apikey` command line option or with the environment variable `UC_APIKEY`.
+The new API key is stored in the `./credentials` file (change its path with the `--keyfile` option) and will be used for the configured endpoint in subsequent invocations. You can manually set the API key (and override stored credentials) with the `--apikey` command line option or with the environment variable `UC_APIKEY`.

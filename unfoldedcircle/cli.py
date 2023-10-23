@@ -4,22 +4,61 @@ import sys
 import click
 
 from unfoldedcircle.device import (
-    Device,
-    DeviceGroup,
-    discover_devices,
-    HTTPError,
+    AUTH_APIKEY_NAME,
+    ApiKeyNotFound,
     AuthenticationError,
-    NoDefaultEmitter,
-    EmitterNotFound,
     CodesetNotFound,
     CommandNotFound,
-    ApiKeyNotFound,
-    AUTH_APIKEY_NAME,
+    Device,
+    DeviceGroup,
+    EmitterNotFound,
+    HTTPError,
+    NoDefaultEmitter,
+    discover_devices,
 )
 
 VERSION = "0.0.1"
 
-pass_devices = click.make_pass_decorator(DeviceGroup)
+
+class Credentials:
+    def __init__(self, keyfile):
+        self.keyfile = keyfile
+        self.apikeys = dict()
+
+    def read_keyfile(self):
+        apikeys = dict()
+        with open(self.keyfile, "r") as f:
+            for line in f:
+                endpoint, apikey = line.split(";")
+                apikey = apikey.strip()
+                apikeys[endpoint] = apikey
+        self.apikeys = apikeys
+        return apikeys
+
+    def write_keyfile(self):
+        with open(self.keyfile, "w") as f:
+            for endpoint, key in self.apikeys.items():
+                f.write(f"{endpoint};{key}\n")
+
+    def add_endpoint(self, endpoint, key):
+        self.read_keyfile()
+        self.apikeys.update({endpoint: key})
+        self.write_keyfile()
+
+    def delete_endpoint(self, endpoint):
+        self.read_keyfile()
+        if endpoint in self.read_keyfile():
+            del self.apikeys[endpoint]
+            self.write_keyfile()
+
+
+class AppContext:
+    def __init__(self, credentials, devices):
+        self.credentials = credentials
+        self.devices = devices
+
+
+pass_app_context = click.make_pass_decorator(AppContext)
 
 
 def main():
@@ -39,15 +78,6 @@ def main():
         sys.exit(-1)
 
 
-def parse_keyfile(f):
-    apikeys = dict()
-    for line in f:
-        endpoint, apikey = line.split(";")
-        apikey = apikey.strip()
-        apikeys[endpoint] = apikey
-    return apikeys
-
-
 @click.group()
 @click.option("--endpoint", envvar="UC_ENDPOINT")
 @click.option(
@@ -55,7 +85,7 @@ def parse_keyfile(f):
     "--keyfile",
     envvar="UC_KEYFILE",
     default="./.credentials",
-    type=click.File("r"),
+    type=click.Path(),
 )
 @click.option("--apikey", envvar="UC_APIKEY", type=str)
 @click.option("-d", "--debug", default=False, count=True)
@@ -66,78 +96,83 @@ def parse_keyfile(f):
 )
 @click.pass_context
 def cli(ctx, endpoint, keyfile, apikey, debug, testing):
-    ctx.obj = dict()
-
-    if testing:
-        click.echo("-- Testing mode --")
-        if not endpoint:
-            endpoint = "http://localhost:8080/api/"
-
     lvl = logging.WARN
     if debug:
         lvl = logging.DEBUG
         click.echo("Setting debug level to %s" % debug)
     logging.basicConfig(level=lvl)
 
+    # credentials
+    credentials = Credentials(keyfile)
     if apikey:
         apikeys = {endpoint: apikey}
     if not apikey:
-        apikeys = parse_keyfile(keyfile)
+        apikeys = credentials.read_keyfile()
 
+    # devices
+    if testing:
+        click.echo("-- Testing mode --")
+        endpoint = "http://localhost:8080/api/"
     if not endpoint:
         logging.debug("Auto-discoverying devices")
-        ctx.obj = discover_devices(apikeys)
+        devices = discover_devices(apikeys)
     else:
         logging.debug("Using endpoint %s", endpoint)
         apikey = apikeys.get(endpoint)
-        ctx.obj = DeviceGroup([Device(endpoint, apikey)])
+        devices = DeviceGroup([Device(endpoint, apikey)])
+
+    ctx.obj = AppContext(credentials, devices)
 
 
 @cli.group()
-@pass_devices
-def auth(devices):
+@pass_app_context
+def auth(app):
     """Authenticate with the device."""
-    if len(devices) != 1:
+    if len(app.devices) != 1:
         click.echo("Use --endpoint to specify 1 device, multiple discovered.")
         sys.exit(-1)
 
 
-@auth.command()
+@auth.command("login")
 @click.option("--pin", envvar="UC_PIN", type=str)
-@pass_devices
-def auth_login(devices, pin):
+@pass_app_context
+def auth_login(app, pin):
     """Create an API key for this library."""
-    assert len(devices) == 1
-    d = devices[0]
-    if d.apikey:
-        click.echo("API key already configured.")
-        sys.exit(-1)
+    assert len(app.devices) == 1
+    d = app.devices[0]
+    d.apikey = None
     if not pin:
         d.pin = click.prompt("PIN", hide_input=True)
     key = d.add_apikey(AUTH_APIKEY_NAME, ["admin"])
-    click.echo(f"Use this API key for '{d.name}': {key['api_key']}")
+    app.credentials.add_endpoint(d.endpoint, key)
+    click.echo(f"New API key for '{d.endpoint}': {key}")
 
 
-@auth.command()
+@auth.command("logout")
 @click.option("--pin", envvar="UC_PIN", type=str)
-@pass_devices
-def auth_logout(devices, pin):
+@pass_app_context
+def auth_logout(app, pin):
     """Delete this libraries API key."""
-    assert len(devices) == 1
-    d = devices[0]
+    assert len(app.devices) == 1
+    d = app.devices[0]
+    if not d.apikey:
+        click.echo("Not logged in")
+        sys.exit(-1)
+    app.credentials.delete_endpoint(d.endpoint)
     if not d.apikey:
         if not pin:
             pin = click.prompt("PIN", hide_input=True)
         d.pin = pin
     d.del_apikey(AUTH_APIKEY_NAME)
+    click.echo(f"API key for '{d.endpoint}' removed")
 
 
 @auth.command("list")
-@pass_devices
-def auth_listkeys(devices):
+@pass_app_context
+def auth_listkeys(app):
     """List registered API keys."""
-    assert len(devices) == 1
-    d = devices[0]
+    assert len(app.devices) == 1
+    d = app.devices[0]
     keys = d.fetch_apikeys()
     if not keys:
         click.echo("No API keys found")
@@ -161,8 +196,8 @@ def auth_listkeys(devices):
 @auth.command("add")
 @click.argument("name")
 @click.argument("scopes")
-@pass_devices
-def auth_addkey(devices, name, scopes):
+@pass_app_context
+def auth_addkey(app, name, scopes):
     """Add an API key with NAME and SCOPES.
 
     NAME is the name of the API key to add.
@@ -170,32 +205,32 @@ def auth_addkey(devices, name, scopes):
 
     Example: auth add testkey ir,configuration
     """
-    assert len(devices) == 1
-    d = devices[0]
+    assert len(a.devices) == 1
+    d = app.devices[0]
     d.add_apikey(name, scopes.split(","))
 
 
 @auth.command("del")
 @click.argument("apikey")
-@pass_devices
-def auth_delkey(devices, apikey):
+@pass_app_context
+def auth_delkey(app, apikey):
     """Delete an API key APIKEY.
 
     APIKEY is the name of the device to send the IR code to (e.g. "LG TV")
 
     Example: auth del "1fbcbbd5-06ff-48b4-a7a8-a09c13d07458"
     """
-    assert len(devices) == 1
-    d = devices[0]
+    assert len(app.devices) == 1
+    d = app.devices[0]
     d.del_apikey(apikey)
 
 
 @cli.command()
-@pass_devices
-def info(devices):
+@pass_app_context
+def info(app):
     """Print device information."""
 
-    for d in devices:
+    for d in app.devices:
         click.echo(f"Remote: '{d.info()['device_name']}'")
         click.echo(f"  endpoint: {d.url()}")
         click.echo(f"  version: {d.info()['os']}")
@@ -204,25 +239,25 @@ def info(devices):
 
 
 @cli.command()
-@pass_devices
-def discover(devices):
+@pass_app_context
+def discover(app):
     """Discover supported devices."""
 
-    if not devices:
+    if not app.devices:
         click.echo("No devices discovered.")
         sys.exit(-1)
     else:
         click.echo("Discovered devices:")
-        for d in devices:
+        for d in app.devices:
             click.echo(f"- {d.info()['device_name']} ({d.endpoint})")
 
 
 @cli.command()
-@pass_devices
-def docks(devices):
+@pass_app_context
+def docks(app):
     """List docks connected to a remote."""
 
-    for d in devices:
+    for d in app.devices:
         docks = d.fetch_docks()
         if not docks:
             click.echo("No docks found")
@@ -242,11 +277,11 @@ def docks(devices):
 
 
 @cli.command()
-@pass_devices
-def activities(devices):
+@pass_app_context
+def activities(app):
     """List activities."""
 
-    for d in devices:
+    for d in app.devices:
         activities = d.fetch_activities()
         if not activities:
             click.echo("No activities found")
@@ -264,11 +299,11 @@ def activities(devices):
 
 
 @cli.command()
-@pass_devices
-def ircodes(devices):
+@pass_app_context
+def ircodes(app):
     """List IR codesets."""
 
-    for d in devices:
+    for d in app.devices:
         remotes = d.fetch_remotes()
         if not remotes:
             click.echo("No IR codesets found")
@@ -283,11 +318,11 @@ def ircodes(devices):
 
 
 @cli.command()
-@pass_devices
-def iremitters(devices):
+@pass_app_context
+def iremitters(app):
     """List IR emitters."""
 
-    for d in devices:
+    for d in app.devices:
         emitters = d.fetch_emitters()
         if not emitters:
             click.echo("No IR emitters found")
@@ -313,8 +348,8 @@ def iremitters(devices):
 )
 @click.argument("target")
 @click.argument("command")
-@pass_devices
-def irsend(devices, emitter, target, command):
+@pass_app_context
+def irsend(app, emitter, target, command):
     """Send IR COMMAND to TARGET.
 
     TARGET is the name of the device to send the IR code to (e.g. "LG TV")
@@ -324,4 +359,4 @@ def irsend(devices, emitter, target, command):
     Example: irsend "LG TV" VOLUME_DUP
     """
 
-    devices.send_ircmd(target, command, emitter)
+    app.devices.send_ircmd(target, command, emitter)
