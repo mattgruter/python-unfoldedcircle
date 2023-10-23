@@ -27,11 +27,14 @@ class Credentials:
 
     def read_keyfile(self):
         apikeys = dict()
-        with open(self.keyfile, "r") as f:
-            for line in f:
-                endpoint, apikey = line.split(";")
-                apikey = apikey.strip()
-                apikeys[endpoint] = apikey
+        try:
+            with open(self.keyfile, "r") as f:
+                for line in f:
+                    endpoint, apikey = line.split(";")
+                    apikey = apikey.strip()
+                    apikeys[endpoint] = apikey
+        except FileNotFoundError:
+            apikeys = dict()
         self.apikeys = apikeys
         return apikeys
 
