@@ -186,6 +186,11 @@ class Device:
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
 
+    def raise_if_error(self, r):
+        if r.is_error:
+            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
+            raise HTTPError(msg)
+
     def login(self, username, pin):
         with httpx.Client() as client:
             body = {"username": username, "password": pin}
@@ -211,18 +216,14 @@ class Device:
         if not self.__info:
             with self.client() as client:
                 r = client.get(self.url("pub/version"))
-                if r.is_error:
-                    msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
-                    raise HTTPError(msg)
-                self.__info = r.json()
+            self.raise_if_error(r)
+            self.__info = r.json()
         return self.__info
 
     def fetch_apikeys(self):
         with self.client() as client:
             r = client.get(self.url("auth/api_keys"))
-        if r.is_error:
-            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
-            raise HTTPError(msg)
+        self.raise_if_error(r)
         return r.json()
 
     def add_apikey(self, key_name, scopes):
@@ -230,9 +231,7 @@ class Device:
         body = {"name": key_name, "scopes": scopes}
         with self.client() as client:
             r = client.post(self.url("auth/api_keys"), json=body)
-        if r.is_error:
-            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
-            raise HTTPError(msg)
+        self.raise_if_error(r)
         return r.json()
 
     def del_apikey(self, key_name):
@@ -247,34 +246,36 @@ class Device:
                 msg = f"API Key '{key_name}' not found."
                 raise ApiKeyNotFound(key_name, message=msg)
             r = client.delete(self.url(f"auth/api_keys/{key_id}"))
-        if r.is_error:
-            msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
-            raise HTTPError(msg)
+        self.raise_if_error(r)
 
     def fetch_docks(self):
         with self.client() as client:
             r = client.get(self.url("docks"))
+        self.raise_if_error(r)
         return r.json()
 
     def fetch_activities(self):
         with self.client() as client:
             r = client.get(self.url("activities"))
+        self.raise_if_error(r)
         return r.json()
 
     def fetch_remotes(self):
         with self.client() as client:
             r = client.get(self.url("remotes"))
+            self.raise_if_error(r)
             self.remotes = r.json()
             for remote in self.remotes:
                 r = client.get(self.url(f"remotes/{remote['entity_id']}/ir"))
+                self.raise_if_error(r)
                 if r:
                     remote["codeset"] = r.json()
-
         return self.remotes
 
     def fetch_emitters(self):
         with self.client() as client:
             r = client.get(self.url("ir/emitters"))
+        self.raise_if_error(r)
         return r.json()
 
     def send_ircode(self, emitter, codeset, command):
@@ -282,13 +283,11 @@ class Device:
             body = {"codeset_id": codeset, "cmd_id": command}
             url = self.url(f"ir/emitters/{emitter}/send")
             r = client.put(url=url, json=body)
-            if r.is_error:
-                if r.status_code == 404:
-                    msg = f"IR command '{command}' not found."
-                    raise CommandNotFound(command, message=msg)
-                err = r.json()
-                msg = f"{r.status_code} {err['code']}: {err['message']}"
-                raise HTTPError(msg)
+            if r.is_error and r.status_code == 404:
+                msg = f"IR command '{command}' not found."
+                raise CommandNotFound(command, message=msg)
+            else:
+                self.raise_if_error(r)
 
 
 class ApiKeyAuth(httpx.Auth):
