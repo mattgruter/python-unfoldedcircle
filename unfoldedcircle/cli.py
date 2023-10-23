@@ -93,7 +93,7 @@ def auth_login(devices, pin):
     if not pin:
         d.pin = click.prompt("PIN", hide_input=True)
     key = d.add_apikey(AUTH_APIKEY_NAME, ["admin"])
-    click.echo(f"Use this API key for {d.name}: {key['api_key']}")
+    click.echo(f"Use this API key for '{d.name}': {key['api_key']}")
 
 
 @auth.command()
