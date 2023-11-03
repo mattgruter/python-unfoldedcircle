@@ -21,7 +21,8 @@ class HTTPError(Exception):
         message -- explanation of the error
     """
 
-    def __init__(self, message):
+    def __init__(self, status_code, message):
+        self.status_code = status_code
         self.message = message
         super().__init__(self.message)
 
@@ -195,7 +196,7 @@ class Device:
     def raise_if_error(self, r):
         if r.is_error:
             msg = f"{r.status_code} {r.json()['code']}: {r.json()['message']}"
-            raise HTTPError(msg)
+            raise HTTPError(r.status_code, msg)
 
     def login(self, username, pin):
         with httpx.Client() as client:
