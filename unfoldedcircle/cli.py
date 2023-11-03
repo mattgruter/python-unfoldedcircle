@@ -208,7 +208,7 @@ def auth_addkey(app, name, scopes):
 
     Example: auth add testkey ir,configuration
     """
-    assert len(a.devices) == 1
+    assert len(app.devices) == 1
     d = app.devices[0]
     d.add_apikey(name, scopes.split(","))
 
