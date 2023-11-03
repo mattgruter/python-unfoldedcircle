@@ -180,7 +180,11 @@ class Device:
         self.pin = pin
         self._name = None
         self._fw_version = None
+        self._model_name = None
+        self._model_number = None
+        self._serial_number = None
         self._version = None
+        self._sysinfo = None
 
     @property
     def name(self):
@@ -189,6 +193,18 @@ class Device:
     @property
     def fw_version(self):
         return self._fw_version or "N/A"
+
+    @property
+    def model_name(self):
+        return self._model_name or "N/A"
+
+    @property
+    def model_number(self):
+        return self._model_number or "N/A"
+
+    @property
+    def serial_number(self):
+        return self._serial_number or "N/A"
 
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
@@ -228,6 +244,17 @@ class Device:
             self._name = r.json().get("device_name")
             self._fw_version = r.json().get("os")
         return self._version
+
+    def get_sysinfo(self):
+        if not self._sysinfo:
+            with self.client() as client:
+                r = client.get(self.url("system"))
+            self.raise_if_error(r)
+            self._sysinfo = r.json()
+            self._model_name = r.json().get("model_name")
+            self._model_number = r.json().get("model_number")
+            self._serial_number = r.json().get("serial_number")
+        return self._sysinfo
 
     def get_apikeys(self):
         with self.client() as client:
