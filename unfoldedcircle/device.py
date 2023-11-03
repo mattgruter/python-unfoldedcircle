@@ -124,7 +124,7 @@ class DeviceGroup(list):
             )
             raise NoDefaultEmitter()
         for d in self:
-            emitters = d.fetch_emitters()
+            emitters = d.get_emitters()
             if not emitter_name:
                 if len(emitters) == 1:
                     e = emitters[0]
@@ -155,13 +155,13 @@ class DeviceGroup(list):
     def find_codeset(self, target):
         logging.debug("Searching for IR target '%s'", target)
         for d in self:
-            remotes = d.fetch_remotes()
+            remotes = d.get_remotes()
             for r in remotes:
                 if target in r["name"].values():
                     logging.debug(
                         "Found IR target '%s' on device '%s'",
                         target,
-                        d.info()["device_name"],
+                        d.name,
                     )
                     return d, r["codeset"]["id"]
         else:
@@ -177,11 +177,17 @@ class Device:
         self.port = p.port
         self.apikey = apikey
         self.pin = pin
-        self.__info = None
+        self._name = None
+        self._fw_version = None
+        self._version = None
 
     @property
     def name(self):
-        return self.info()["device_name"]
+        return self._name or "N/A"
+
+    @property
+    def fw_version(self):
+        return self._fw_version or "N/A"
 
     def url(self, path=""):
         return urljoin(self.endpoint, path, allow_fragments=True)
@@ -212,15 +218,17 @@ class Device:
                 client.cookies.update(auth_cookie)
         return client
 
-    def info(self):
-        if not self.__info:
+    def get_version(self):
+        if not self._version:
             with self.client() as client:
                 r = client.get(self.url("pub/version"))
             self.raise_if_error(r)
-            self.__info = r.json()
-        return self.__info
+            self._version = r.json()
+            self._name = r.json().get("device_name")
+            self._fw_version = r.json().get("os")
+        return self._version
 
-    def fetch_apikeys(self):
+    def get_apikeys(self):
         with self.client() as client:
             r = client.get(self.url("auth/api_keys"))
         self.raise_if_error(r)
@@ -237,7 +245,7 @@ class Device:
     def del_apikey(self, key_name):
         logging.debug(f"Deleting API key '{key_name}'")
         with self.client() as client:
-            keys = self.fetch_apikeys()
+            keys = self.get_apikeys()
             for k in keys:
                 if k["name"] == key_name:
                     key_id = k["key_id"]
@@ -248,19 +256,19 @@ class Device:
             r = client.delete(self.url(f"auth/api_keys/{key_id}"))
         self.raise_if_error(r)
 
-    def fetch_docks(self):
+    def get_docks(self):
         with self.client() as client:
             r = client.get(self.url("docks"))
         self.raise_if_error(r)
         return r.json()
 
-    def fetch_activities(self):
+    def get_activities(self):
         with self.client() as client:
             r = client.get(self.url("activities"))
         self.raise_if_error(r)
         return r.json()
 
-    def fetch_remotes(self):
+    def get_remotes(self):
         with self.client() as client:
             r = client.get(self.url("remotes"))
             self.raise_if_error(r)
@@ -272,7 +280,7 @@ class Device:
                     remote["codeset"] = r.json()
         return self.remotes
 
-    def fetch_emitters(self):
+    def get_emitters(self):
         with self.client() as client:
             r = client.get(self.url("ir/emitters"))
         self.raise_if_error(r)

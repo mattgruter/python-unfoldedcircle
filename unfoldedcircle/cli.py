@@ -176,11 +176,11 @@ def auth_listkeys(app):
     """List registered API keys."""
     assert len(app.devices) == 1
     d = app.devices[0]
-    keys = d.fetch_apikeys()
+    keys = d.get_apikeys()
     if not keys:
         click.echo("No API keys found")
         return
-    click.echo(f"API keys configured on '{d.info()['device_name']}'")
+    click.echo(f"API keys configured on '{d.name}'")
     fields = {
         "id": "key_id",
         "name": "name",
@@ -219,9 +219,9 @@ def auth_addkey(app, name, scopes):
 def auth_delkey(app, apikey):
     """Delete an API key APIKEY.
 
-    APIKEY is the name of the device to send the IR code to (e.g. "LG TV")
+    APIKEY is the name of the API Key to delete.
 
-    Example: auth del "1fbcbbd5-06ff-48b4-a7a8-a09c13d07458"
+    Example: auth del mykey
     """
     assert len(app.devices) == 1
     d = app.devices[0]
@@ -234,11 +234,11 @@ def info(app):
     """Print device information."""
 
     for d in app.devices:
-        click.echo(f"Remote: '{d.info()['device_name']}'")
+        click.echo(f"Remote: '{d.get_version()['device_name']}'")
         click.echo(f"  endpoint: {d.url()}")
-        click.echo(f"  version: {d.info()['os']}")
-        click.echo(f"  api: {d.info()['api']}")
-        click.echo(f"  core: {d.info()['core']}")
+        click.echo(f"  version: {d.get_version()['os']}")
+        click.echo(f"  api: {d.get_version()['api']}")
+        click.echo(f"  core: {d.get_version()['core']}")
 
 
 @cli.command()
@@ -252,7 +252,7 @@ def discover(app):
     else:
         click.echo("Discovered devices:")
         for d in app.devices:
-            click.echo(f"- {d.info()['device_name']} ({d.endpoint})")
+            click.echo(f"- {d.name} ({d.endpoint})")
 
 
 @cli.command()
@@ -261,11 +261,11 @@ def docks(app):
     """List docks connected to a remote."""
 
     for d in app.devices:
-        docks = d.fetch_docks()
+        docks = d.get_docks()
         if not docks:
             click.echo("No docks found")
             return
-        click.echo(f"Docks connected to '{d.info()['device_name']}'")
+        click.echo(f"Docks connected to '{d.name}'")
         fields = {
             "id": "dock_id",
             "model": "model",
@@ -285,11 +285,11 @@ def activities(app):
     """List activities."""
 
     for d in app.devices:
-        activities = d.fetch_activities()
+        activities = d.get_activities()
         if not activities:
             click.echo("No activities found")
             return
-        click.echo(f"Activities configured on '{d.info()['device_name']}'")
+        click.echo(f"Activities configured on '{d.name}'")
         fields = {
             "id": "entity_id",
             "enabled": "enabled",
@@ -307,11 +307,11 @@ def ircodes(app):
     """List IR codesets."""
 
     for d in app.devices:
-        remotes = d.fetch_remotes()
+        remotes = d.get_remotes()
         if not remotes:
             click.echo("No IR codesets found")
             return
-        click.echo(f"IR codesets configured on '{d.info()['device_name']}")
+        click.echo(f"IR codesets configured on '{d.name}")
         for r in remotes:
             click.echo(f"- name: '{r['name']['en']}'")
             click.echo(f"    id      {r['entity_id']}")
@@ -326,11 +326,11 @@ def iremitters(app):
     """List IR emitters."""
 
     for d in app.devices:
-        emitters = d.fetch_emitters()
+        emitters = d.get_emitters()
         if not emitters:
             click.echo("No IR emitters found")
             return
-        click.echo(f"IR emitters available on '{d.info()['device_name']}")
+        click.echo(f"IR emitters available on '{d.name}")
         fields = {
             "id": "device_id",
             "type": "type",
