@@ -180,7 +180,7 @@ def auth_listkeys(app):
     if not keys:
         click.echo("No API keys found")
         return
-    click.echo(f"API keys configured on '{d.name}'")
+    click.echo(f"API keys configured on '{d.get_name()}'")
     fields = {
         "id": "key_id",
         "name": "name",
@@ -230,15 +230,30 @@ def auth_delkey(app, apikey):
 
 @cli.command()
 @pass_app_context
+def version(app):
+    """Print device version."""
+
+    for d in app.devices:
+        ver = d.get_version()
+        click.echo(f"Remote: '{d.get_name()}'")
+        click.echo(f"  endpoint: {d.endpoint}")
+        click.echo(f"  version: {ver['os']}")
+        click.echo(f"  api: {ver['api']}")
+        click.echo(f"  core: {ver['core']}")
+
+
+@cli.command()
+@pass_app_context
 def info(app):
     """Print device information."""
 
     for d in app.devices:
-        click.echo(f"Remote: '{d.get_version()['device_name']}'")
-        click.echo(f"  endpoint: {d.url()}")
-        click.echo(f"  version: {d.get_version()['os']}")
-        click.echo(f"  api: {d.get_version()['api']}")
-        click.echo(f"  core: {d.get_version()['core']}")
+        sysinfo = d.get_sysinfo()
+        click.echo(f"Remote: '{d.get_name()}'")
+        click.echo(f"  endpoint: {d.endpoint}")
+        click.echo(f"  model: {sysinfo['model_name']}")
+        click.echo(f"  model number: {sysinfo['model_number']}")
+        click.echo(f"  serial number: {sysinfo['serial_number']}")
 
 
 @cli.command()
@@ -252,7 +267,7 @@ def discover(app):
     else:
         click.echo("Discovered devices:")
         for d in app.devices:
-            click.echo(f"- {d.name} ({d.endpoint})")
+            click.echo(f"- {d.get_name()} ({d.endpoint})")
 
 
 @cli.command()
@@ -265,7 +280,7 @@ def docks(app):
         if not docks:
             click.echo("No docks found")
             return
-        click.echo(f"Docks connected to '{d.name}'")
+        click.echo(f"Docks connected to '{d.get_name()}'")
         fields = {
             "id": "dock_id",
             "model": "model",
@@ -289,7 +304,7 @@ def activities(app):
         if not activities:
             click.echo("No activities found")
             return
-        click.echo(f"Activities configured on '{d.name}'")
+        click.echo(f"Activities configured on '{d.get_name()}'")
         fields = {
             "id": "entity_id",
             "enabled": "enabled",
@@ -311,7 +326,7 @@ def ircodes(app):
         if not remotes:
             click.echo("No IR codesets found")
             return
-        click.echo(f"IR codesets configured on '{d.name}")
+        click.echo(f"IR codesets configured on '{d.get_name()}")
         for r in remotes:
             click.echo(f"- name: '{r['name']['en']}'")
             click.echo(f"    id      {r['entity_id']}")
@@ -330,7 +345,7 @@ def iremitters(app):
         if not emitters:
             click.echo("No IR emitters found")
             return
-        click.echo(f"IR emitters available on '{d.name}")
+        click.echo(f"IR emitters available on '{d.get_name()}")
         fields = {
             "id": "device_id",
             "type": "type",

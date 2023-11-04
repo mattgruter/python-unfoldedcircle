@@ -235,6 +235,11 @@ class Device:
                 client.cookies.update(auth_cookie)
         return client
 
+    def get_name(self):
+        if not self._name:
+            self.get_version()
+        return self._name
+
     def get_version(self):
         if not self._version:
             with self.client() as client:
