@@ -14,6 +14,7 @@ from unfoldedcircle.device import (
     EmitterNotFound,
     HTTPError,
     discover_devices,
+    ConnectError,
 )
 
 
@@ -72,6 +73,9 @@ def main():
         sys.exit(-1)
     except (EmitterNotFound, CodesetNotFound, CommandNotFound) as err:
         click.echo(f"{err.message}")
+        sys.exit(-1)
+    except ConnectError as err:
+        click.echo(f"Connection Error: {err}")
         sys.exit(-1)
 
 

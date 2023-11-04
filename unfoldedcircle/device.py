@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import zeroconf
+from httpx import ConnectError  # noqa # pylint: disable=unused-import
 
 ZEROCONF_TIMEOUT = 3
 ZEROCONF_SERVICE_TYPE = "_uc-remote._tcp.local."
