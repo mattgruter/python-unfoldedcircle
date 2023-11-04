@@ -12,7 +12,7 @@ packages = [{include = "unfoldedcircle"}]
 unfoldedcircle = "unfoldedcircle.cli:main"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11"
 httpx = "^0.25.0"
 click = "^8.1.7"
 zeroconf = "^0.119.0"
