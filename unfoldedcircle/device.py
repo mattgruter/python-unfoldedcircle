@@ -39,12 +39,6 @@ class AuthenticationError(Exception):
         super().__init__(self.message)
 
 
-class NoDefaultEmitter(Exception):
-    """Raised when default IR emitter can't be inferred."""
-
-    pass
-
-
 class EmitterNotFound(Exception):
     """Raised when IR emitter with a given name can't be found.
 
@@ -102,72 +96,20 @@ class ApiKeyNotFound(Exception):
 
 
 class DeviceGroup(list):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args):
         super(DeviceGroup, self).__init__(args[0])
 
-    def send_ircmd(self, target, cmd, emitter_name=None):
-        dev, emitter = self.find_emitter(emitter_name)
-        dev2, codeset = self.find_codeset(target)
-        assert dev == dev2
-        logging.debug(
-            "Sending '%s' to '%s' via emitter '%s' on device '%s'",
-            cmd,
-            target,
-            emitter["name"],
-            dev.name,
-        )
-        dev.send_ircode(emitter["device_id"], codeset, cmd)
-
-    def find_emitter(self, emitter_name):
-        if len(self) > 1 and not emitter_name:
-            logging.info(
-                "Unable to infer default emitter with more than 1 device."
-            )
-            raise NoDefaultEmitter()
+    def send_ircmd(self, command, target, emitter=None):
         for d in self:
-            emitters = d.get_emitters()
-            if not emitter_name:
-                if len(emitters) == 1:
-                    e = emitters[0]
-                    logging.debug(
-                        "Selecting default IR emitter '%s'", e["name"]
-                    )
-                    return d, e
-                elif len(emitters) > 1:
-                    raise NoDefaultEmitter()
-
-            for e in emitters:
-                if emitter_name == e["name"]:
-                    logging.debug(
-                        "Found IR emitter '%s' connected to device '%s'",
-                        emitter_name,
-                        d.name,
-                    )
-                    return d, e
-            logging.debug(
-                "IR emitter '%s' not found in device '%s'",
-                emitter_name,
-                d.name,
-            )
-        else:
-            msg = f"IR emitter '{emitter_name}' not found."
-            raise EmitterNotFound(emitter_name, message=msg)
-
-    def find_codeset(self, target):
-        logging.debug("Searching for IR target '%s'", target)
-        for d in self:
-            remotes = d.get_remotes()
-            for r in remotes:
-                if target in r["name"].values():
-                    logging.debug(
-                        "Found IR target '%s' on device '%s'",
-                        target,
-                        d.name,
-                    )
-                    return d, r["codeset"]["id"]
-        else:
-            msg = f"IR target '{target}' not found."
-            raise CodesetNotFound(target, message=msg)
+            try:
+                d.send_ircmd(command, target, emitter)
+            except EmitterNotFound:
+                pass  # try next device
+            else:
+                return
+        else:  # raise EmitterNotFound if no device has it
+            msg = f"IR emitter '{emitter}' not found."
+            raise EmitterNotFound(emitter, message=msg)
 
 
 class Device:
@@ -319,16 +261,71 @@ class Device:
         self.raise_if_error(r)
         return r.json()
 
-    def send_ircode(self, emitter, codeset, command):
+    def send_ircode(self, command, target, emitter_name=None):
+        """Send IR command to supplied target (i.e. remote name).
+
+        The command is sent via all emitters attached to the device unless
+        an emitter is supplied (by name).
+        Example: device.send_ircode("VOLUME_UP", "LG TV", "dock1")
+
+        Raises
+          - 'CommandNotFound' if the supplied IR command is not recognized.
+          - 'CodesetNotFound' if the supplied target is not recognized.
+          - 'EmitterNotFound' if a supplied emitter is not recognized.
+        """
         with self.client() as client:
-            body = {"codeset_id": codeset, "cmd_id": command}
-            url = self.url(f"ir/emitters/{emitter}/send")
-            r = client.put(url=url, json=body)
-            if r.is_error and r.status_code == 404:
-                msg = f"IR command '{command}' not found."
-                raise CommandNotFound(command, message=msg)
+            codeset_id = self.find_codeset(target)
+            body = {"codeset_id": codeset_id, "cmd_id": command}
+            if emitter_name:
+                emitter_ids = [self.find_emitter(emitter_name)]
             else:
-                self.raise_if_error(r)
+                emitter_ids = [e["id"] for e in self.get_emitters()]
+            for emitter_id in emitter_ids:
+                logging.debug("Sending %s on emitter %s", command, emitter_id)
+                url = self.url(f"ir/emitters/{emitter_id}/send")
+                r = client.put(url=url, json=body)
+                if r.is_error and r.status_code == 404:
+                    msg = f"IR command '{command}' not found."
+                    raise CommandNotFound(command, message=msg)
+                else:
+                    self.raise_if_error(r)
+
+    def find_codeset(self, target):
+        logging.debug(
+            "Searching for IR target '%s' on device '%s'", target, self.name
+        )
+        for r in self.get_remotes():
+            if target in r["name"].values():
+                logging.debug(
+                    "Found IR target '%s' on device '%s': codeset=%s",
+                    target,
+                    self.name,
+                    r["codeset"]["id"],
+                )
+                return r["codeset"]["id"]
+        else:
+            msg = f"IR target '{target}' not found."
+            raise CodesetNotFound(target, message=msg)
+
+    def find_emitter(self, emitter_name):
+        emitters = self.get_emitters()
+        for e in emitters:
+            if emitter_name == e["name"]:
+                logging.debug(
+                    "Found IR emitter '%s' with ID '%s' on device '%s'",
+                    emitter_name,
+                    e["id"],
+                    self.get_name(),
+                )
+                return e["id"]
+        else:
+            logging.debug(
+                "IR emitter '%s' not found on device '%s'",
+                emitter_name,
+                self.get_name(),
+            )
+            msg = f"IR emitter '{emitter_name}' not found."
+            raise EmitterNotFound(emitter_name, message=msg)
 
 
 class ApiKeyAuth(httpx.Auth):

@@ -13,7 +13,6 @@ from unfoldedcircle.device import (
     DeviceGroup,
     EmitterNotFound,
     HTTPError,
-    NoDefaultEmitter,
     discover_devices,
 )
 
@@ -72,9 +71,6 @@ def main():
         sys.exit(-1)
     except (AuthenticationError, ApiKeyNotFound) as err:
         click.echo(f"{err.message}")
-        sys.exit(-1)
-    except NoDefaultEmitter:
-        click.echo("No default emitter found. Use --emitter flag to set one.")
         sys.exit(-1)
     except (EmitterNotFound, CodesetNotFound, CommandNotFound) as err:
         click.echo(f"{err.message}")
@@ -364,17 +360,17 @@ def iremitters(app):
     envvar="UC_EMITTER",
     help="The IR emitter to send the code from",
 )
-@click.argument("target")
 @click.argument("command")
+@click.argument("target")
 @pass_app_context
-def irsend(app, emitter, target, command):
+def irsend(app, emitter, command, target):
     """Send IR COMMAND to TARGET.
 
-    TARGET is the name of the device to send the IR code to (e.g. "LG TV")
-
     COMMAND is the name of the IR command (e.g. "VOLUME_UP")
+
+    TARGET is the name of the device to send the IR code to (e.g. "LG TV")
 
     Example: irsend "LG TV" VOLUME_DUP
     """
 
-    app.devices.send_ircmd(target, command, emitter)
+    app.devices.send_ircmd(command, target, emitter)
