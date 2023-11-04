@@ -114,10 +114,7 @@ class DeviceGroup(list):
 
 class Device:
     def __init__(self, endpoint, apikey=None, pin=None):
-        self.endpoint = endpoint
-        p = urlparse(endpoint)
-        self.host = p.hostname
-        self.port = p.port
+        self.endpoint = self.validate_url(endpoint)
         self.apikey = apikey
         self.pin = pin
         self._name = None
@@ -148,7 +145,16 @@ class Device:
     def serial_number(self):
         return self._serial_number or "N/A"
 
-    def url(self, path=""):
+    @classmethod
+    def validate_url(cls, url):
+        p = urlparse(url)
+        if p.scheme not in ["http", "https"]:
+            raise ValueError(f"Endpoint {url} doesn't seem to be a valid URL")
+        if p.path[-1] != "/":  # ensure endpoint API path ends with a /
+            return url + "/"
+        return url
+
+    def url(self, path="/"):
         return urljoin(self.endpoint, path, allow_fragments=True)
 
     def raise_if_error(self, r):

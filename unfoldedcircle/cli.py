@@ -114,6 +114,7 @@ def cli(ctx, endpoint, keyfile, apikey, debug, testing):
         logging.debug("Auto-discoverying devices")
         devices = discover_devices(apikeys)
     else:
+        endpoint = Device.validate_url(endpoint)
         logging.debug("Using endpoint %s", endpoint)
         apikey = apikeys.get(endpoint)
         devices = DeviceGroup([Device(endpoint, apikey)])
