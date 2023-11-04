@@ -16,8 +16,6 @@ from unfoldedcircle.device import (
     discover_devices,
 )
 
-VERSION = "0.0.1"
-
 
 class Credentials:
     def __init__(self, keyfile):
