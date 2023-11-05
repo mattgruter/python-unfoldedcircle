@@ -9,12 +9,12 @@ from unfoldedcircle.device import (
     AuthenticationError,
     CodesetNotFound,
     CommandNotFound,
+    ConnectError,
     Device,
     DeviceGroup,
     EmitterNotFound,
     HTTPError,
     discover_devices,
-    ConnectError,
 )
 
 

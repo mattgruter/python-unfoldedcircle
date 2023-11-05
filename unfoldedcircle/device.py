@@ -298,9 +298,7 @@ class Device:
                     self.raise_if_error(r)
 
     def find_codeset(self, target):
-        logging.debug(
-            "Searching for IR target '%s' on device '%s'", target, self.name
-        )
+        logging.debug("Searching for IR target '%s' on device '%s'", target, self.name)
         for r in self.get_remotes():
             if target in r["name"].values():
                 logging.debug(
