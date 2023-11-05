@@ -1,0 +1,15 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-python.black-formatter",
+  "black-formatter.args": [
+    "--line-length", "88"
+  ],
+  "flake8.args": [
+    "--max-line-length", "88"
+   ],
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true
+    }
+  }
+}

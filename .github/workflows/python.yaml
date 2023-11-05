@@ -1,0 +1,52 @@
+name: Test and Lint Python code
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
+
+      - name: cache poetry install
+        uses: actions/cache@v2
+        with:
+          path: ~/.local
+          key: poetry-1.4.1-0
+
+      - name: install poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.4.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: cache deps
+        id: cache-deps
+        uses: actions/cache@v2
+        with:
+          path: .venv
+          key: pydeps-${{ hashFiles('**/poetry.lock') }}
+
+      - name: install dependencies
+        run: poetry install --no-interaction --no-root
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+
+      - name: linting - black
+        run: poetry run black . --check
+      - name: linting - isort
+        run: poetry run isort . --check-only
+      - name: linting - flake8
+        run: poetry run flake8 .
+      - name: scanner - bandit
+        run: poetry run bandit .
+      - name: scanner - saftey
+        run: poetry run safety check
+      - name: testing - pytest
+        run: poetry run pytest

@@ -12,7 +12,7 @@ packages = [{include = "unfoldedcircle"}]
 unfoldedcircle = "unfoldedcircle.cli:main"
 
 [tool.poetry.dependencies]
-python = ">=3.11"
+python = ">=3.11,<4.0"
 httpx = "^0.25.0"
 click = "^8.1.7"
 zeroconf = "^0.119.0"
@@ -25,7 +25,21 @@ black = "^23.9.1"
 pylint = "^3.0.1"
 flake8 = "^6.1.0"
 ipykernel = "^6.25.2"
+pyproject-flake8 = "^6.1.0"
+bandit = "^1.7.5"
+safety = "^2.3.5"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+
+[tool.flake8]
+max-line-length = 88
+
+[tool.isort]
+profile = "black"
+skip_gitignore = true
+line_length = 88
